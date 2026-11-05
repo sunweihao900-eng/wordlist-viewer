@@ -846,13 +846,21 @@ function loadFile(file){
   } else if(ext==='csv'){
     const rd=new FileReader();rd.onload=ev=>parseCsvText(ev.target.result,file.name);rd.readAsText(file,'utf-8');
   } else {
-    const rd=new FileReader();rd.onload=ev=>{const wb=XLSX.read(ev.target.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];const data=XLSX.utils.sheet_to_json(ws,{defval:''});fileRows=data;fileHeaders=data.length?Object.keys(data[0]):[];activeCols=new Set(fileHeaders);renderColPicker();document.getElementById('fileInfo').textContent='✅ '+file.name+'（'+fileRows.length+' 行）';};rd.readAsArrayBuffer(file);
+    const rd=new FileReader();rd.onload=ev=>{const wb=XLSX.read(ev.target.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];const data=XLSX.utils.sheet_to_json(ws,{defval:''});fileRows=data;fileHeaders=data.length?Object.keys(data[0]):[];smartActiveCols(fileHeaders);renderColPicker();document.getElementById('fileInfo').textContent='✅ '+file.name+'（'+fileRows.length+' 行）';};rd.readAsArrayBuffer(file);
   }
 }
 function parseCsvText(txt,name){
   const lines=txt.split(/\r?\n/);const heads=lines[0]?lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim()):[];
   fileHeaders=heads;fileRows=lines.slice(1).filter(l=>l.trim()).map(l=>{const vals=l.split(',').map(v=>v.replace(/^"|"$/g,'').trim());const obj={};heads.forEach((h,i)=>obj[h]=vals[i]||'');return obj;});
-  activeCols=new Set(fileHeaders);renderColPicker();document.getElementById('fileInfo').textContent='✅ '+name+'（'+fileRows.length+' 行）';
+  smartActiveCols(fileHeaders);renderColPicker();document.getElementById('fileInfo').textContent='✅ '+name+'（'+fileRows.length+' 行）';
+}
+// Known scan-only cols (match Python TEXT_COLS); id/meta cols to exclude by default
+const SCAN_COLS=['botTitle','botIntro','botWelcomeMessage','botPrompt'];
+const ID_COLS=['promptId','id','ID','_id'];
+function smartActiveCols(heads){
+  const hasScan=heads.some(h=>SCAN_COLS.includes(h));
+  if(hasScan){activeCols=new Set(heads.filter(h=>SCAN_COLS.includes(h)));}
+  else{activeCols=new Set(heads.filter(h=>!ID_COLS.includes(h)));}
 }
 function renderColPicker(){const wrap=document.getElementById('colPickerWrap'),p=document.getElementById('colPicker');if(!fileHeaders.length){wrap.style.display='none';return;}wrap.style.display='block';p.innerHTML=fileHeaders.map(h=>'<span class="col-chip '+(activeCols.has(h)?'active':'')+'" onclick="toggleCol(this,\''+esc(h)+'\')">'+esc(h)+'</span>').join('');}
 function toggleCol(el,col){el.classList.toggle('active');if(activeCols.has(col))activeCols.delete(col);else activeCols.add(col);}
@@ -868,7 +876,7 @@ function runScan(){
   let rows=[];
   const paste=document.getElementById('scanText').value.trim();
   if(paste){rows=paste.split(/\n/).filter(l=>l.trim()).map((l,i)=>({_id:i+1,_text:l}));}
-  else if(fileRows.length){rows=fileRows.map((r,i)=>{const cols=fileHeaders.length?[...activeCols]:['_text'];const text=cols.map(c=>String(r[c]||'')).join(' ');const meta=Object.entries(r).slice(0,3).map(([k,v])=>k+'='+String(v).slice(0,30)).join(', ');return{_id:i+1,_text:text,_meta:meta}});}
+  else if(fileRows.length){rows=fileRows.map((r,i)=>{const cols=fileHeaders.length?[...activeCols]:['_text'];const pid=r['promptId']||r['id']||'';const ttl=r['botTitle']||r['title']||'';const text=cols.map(c=>String(r[c]||'')).join(' ');const meta=(pid||ttl)?(pid?(ttl?pid+' · '+ttl:pid):(ttl)):Object.entries(r).slice(0,2).map(([k,v])=>k+'='+String(v).slice(0,30)).join(', ');return{_id:i+1,_text:text,_meta:meta,_pid:pid,_ttl:ttl}});}
   else{alert('请先粘贴文本或上传文件');return;}
   st.textContent='⏳ 扫描中…';document.getElementById('btnScan').disabled=true;
   setTimeout(()=>{
@@ -881,13 +889,13 @@ function runScan(){
       +'<div class="scan-exp-menu" id="scanExpMenu"><div class="scan-exp-item" onclick="doScanExport("json")">📄 JSON</div><div class="scan-exp-item" onclick="doScanExport("csv")">📊 CSV</div><div class="scan-exp-item" onclick="doScanExport("xlsx")">📗 Excel (.xlsx)</div></div></div>'
       +'</div>';
     results.filter(r=>r.hits.size>0).forEach(({row,hits})=>{
-      html+='<div class="row-card has-hit">'+(row._meta?'<div class="row-meta">行'+row._id+' · '+esc(row._meta)+'</div>':'<div class="row-meta">行 '+row._id+'</div>')
+      html+='<div class="row-card has-hit">'+(row._meta?'<div class="row-meta">'+esc(row._meta)+'</div>':'<div class="row-meta">行 '+row._id+'</div>')
         +'<div class="row-text">'+buildHL(row._text,hits)+'</div><div class="hit-list">';
       for(const[k,en] of hits)html+='<span class="hit-tag '+(en.src==='敏感'?'min':'')+'">'+esc(en.word)+' <span style="opacity:.6;font-weight:400">'+esc(en.cat)+'</span></span>';
       html+='</div></div>';
     });
     const clean=results.filter(r=>r.hits.size===0);
-    if(clean.length)html+='<details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;color:#6e6e73;padding:8px 0">▶ 未命中行（'+clean.length+'）</summary>'+clean.slice(0,200).map(({row})=>'<div class="no-hit-row"><span style="color:#aeaeb2;margin-right:8px">行'+row._id+'</span>'+esc(row._text.slice(0,200))+'</div>').join('')+(clean.length>200?'<div style="color:#aeaeb2;font-size:12px;padding:8px">…仅显示前200</div>':'')+'</details>';
+    if(clean.length)html+='<details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;color:#6e6e73;padding:8px 0">▶ 未命中行（'+clean.length+'）</summary>'+clean.slice(0,200).map(({row})=>'<div class="no-hit-row"><span style="color:#aeaeb2;margin-right:8px">'+(row._meta?esc(row._meta):'行'+row._id)+'</span>'+esc(row._text.slice(0,200))+'</div>').join('')+(clean.length>200?'<div style="color:#aeaeb2;font-size:12px;padding:8px">…仅显示前200</div>':'')+'</details>';
     sr.innerHTML=html;st.textContent='✅ 完成，共 '+rows.length+' 行';document.getElementById('btnScan').disabled=false;
   },30);
 }
@@ -913,13 +921,14 @@ function doScanExport(fmt){
   const fname='扫描结果_'+ts;
   // Build flat rows: one row per hit (include clean rows too, hits='')
   const flat=results.map(({row,hits})=>{
-    if(hits.size===0)return [{行号:row._id,原文:row._text,命中词:'',类别:'',词库类型:'',状态:'干净'}];
-    return [...hits.values()].map(en=>({行号:row._id,原文:row._text,命中词:en.word,类别:en.cat,词库类型:en.src==='敏感'?'敏感词库':'直拦词库',状态:'命中'}));
+    const pid2=row._pid||'';const ttl2=row._ttl||'';
+    if(hits.size===0)return [{promptId:pid2,botTitle:ttl2,行号:row._id,扫描文本:row._text.slice(0,200),命中词:'',类别:'',词库类型:'',状态:'干净'}];
+    return [...hits.values()].map(en=>({promptId:pid2,botTitle:ttl2,行号:row._id,扫描文本:row._text.slice(0,200),命中词:en.word,类别:en.cat,词库类型:en.src==='敏感'?'敏感词库':'直拦词库',状态:'命中'}));
   }).flat();
   if(fmt==='json'){
     dlBlob(new Blob([JSON.stringify(flat,null,2)],{type:'application/json'}),fname+'.json');
   } else if(fmt==='csv'){
-    const hdr=['行号','原文','命中词','类别','词库类型','状态'];
+    const hasPid=flat.some(r=>r.promptId);const hdr=(hasPid?['promptId','botTitle']:['行号']).concat(['扫描文本','命中词','类别','词库类型','状态']);
     const csvRows=[hdr.join(','),...flat.map(r=>hdr.map(k=>'"'+String(r[k]||'').replace(/"/g,'""')+'"').join(','))];
     dlBlob(new Blob(['﻿'+csvRows.join('\n')],{type:'text/csv;charset=utf-8'}),fname+'.csv');
   } else if(fmt==='xlsx'){
