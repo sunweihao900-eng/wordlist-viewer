@@ -804,7 +804,7 @@ function buildIndex(scopes){
   const cjk=all.filter(e=>hasCJK(e.word));
   const nc=all.filter(e=>!hasCJK(e.word)).sort((a,b)=>b.word.length-a.word.length);
   const ncPat=nc.length?new RegExp('(?<![A-Za-z0-9])(?:'+nc.map(e=>e.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')(?![A-Za-z0-9])','gi'):null;
-  const cjkPat=cjk.length?new RegExp(cjk.map(e=>e.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'),'g'):null;
+  const cjkPat=cjk.length?new RegExp(cjk.slice().sort((a,b)=>b.word.length-a.word.length).map(e=>{const p=e.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');return /^\d/.test(e.word)?'(?<!\\d)'+p:p;}).join('|'),'g'):null;
   const w2e=new Map(all.map(e=>[e.word.toLowerCase(),e]));
   return{ncPat,cjkPat,w2e};
 }
@@ -823,7 +823,7 @@ function buildHL(text,hits){
   if(!hits.size)return esc(text);
   const parts=[];
   for(const[k,en] of hits){
-    if(hasCJK(en.word)){const re=new RegExp(en.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g');for(const m of text.matchAll(re))parts.push({s:m.index,e:m.index+m[0].length,en,w:m[0]});}
+    if(hasCJK(en.word)){const p=en.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');const re=new RegExp(/^\d/.test(en.word)?'(?<!\\d)'+p:p,'g');for(const m of text.matchAll(re))parts.push({s:m.index,e:m.index+m[0].length,en,w:m[0]});}
     else{const re=new RegExp('(?<![A-Za-z0-9])'+en.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9])','gi');for(const m of text.matchAll(re))parts.push({s:m.index,e:m.index+m[0].length,en,w:m[0]});}
   }
   parts.sort((a,b)=>a.s-b.s);
