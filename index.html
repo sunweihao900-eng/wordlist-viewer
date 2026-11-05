@@ -206,6 +206,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .col-chip{padding:3px 9px;border-radius:8px;font-size:12px;cursor:pointer;border:1.5px solid var(--border3);background:var(--bg-panel);color:var(--text);transition:all .1s;user-select:none}
 .col-chip.active{background:#0071e3;color:#fff;border-color:#0071e3}
 .res-header{display:flex;align-items:center;gap:9px;margin-bottom:13px;flex-wrap:wrap}
+.scan-exp-wrap{position:relative;margin-left:auto}
+.btn-scan-exp{padding:6px 13px;background:#0071e3;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.btn-scan-exp:hover{background:#005bbf}
+.scan-exp-menu{position:absolute;top:calc(100%+5px);right:0;background:var(--exp-menu-bg);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;min-width:170px;z-index:300;display:none}
+.scan-exp-menu.open{display:block}
+.scan-exp-item{padding:10px 15px;font-size:13px;cursor:pointer;color:var(--text);white-space:nowrap;display:flex;align-items:center;gap:8px}
+.scan-exp-item:hover{background:var(--exp-item-hover)}
 .res-title{font-size:18px;font-weight:700}
 .stat-chip{padding:5px 11px;border-radius:13px;font-size:12px;font-weight:700;border:1.5px solid}
 .chip-hit{background:#fff0f0;color:#c0392b;border-color:#f5c6c6}
@@ -850,6 +857,7 @@ function parseCsvText(txt,name){
 function renderColPicker(){const wrap=document.getElementById('colPickerWrap'),p=document.getElementById('colPicker');if(!fileHeaders.length){wrap.style.display='none';return;}wrap.style.display='block';p.innerHTML=fileHeaders.map(h=>'<span class="col-chip '+(activeCols.has(h)?'active':'')+'" onclick="toggleCol(this,\''+esc(h)+'\')">'+esc(h)+'</span>').join('');}
 function toggleCol(el,col){el.classList.toggle('active');if(activeCols.has(col))activeCols.delete(col);else activeCols.add(col);}
 function toggleScope(el){el.classList.toggle('active')}
+let _lastScanResults=null; // {rows, results, scopes}
 function runScan(){
   const scopes=[...document.querySelectorAll('.scope-chip.active[data-scope]')].map(el=>el.dataset.scope);
   if(!scopes.length){alert('请至少选一个范围');return;}
@@ -866,8 +874,12 @@ function runScan(){
   setTimeout(()=>{
     let hitCount=0,hitRows=0;
     const results=rows.map(row=>{const hits=scanOne(row._text,idx,doLeet,doSep);if(hits.size>0){hitCount+=hits.size;hitRows++;}return{row,hits};});
+    _lastScanResults={rows,results,scopes};
     let html='<div class="res-header"><span class="res-title">扫描结果</span>'
-      +(hitRows>0?'<span class="stat-chip chip-hit">⚠️ '+hitRows+'/'+rows.length+' 行命中，共 '+hitCount+' 处</span>':'<span class="stat-chip chip-ok">✅ 全部干净</span>')+'</div>';
+      +(hitRows>0?'<span class="stat-chip chip-hit">⚠️ '+hitRows+'/'+rows.length+' 行命中，共 '+hitCount+' 处</span>':'<span class="stat-chip chip-ok">✅ 全部干净</span>')
+      +'<div class="scan-exp-wrap"><button class="btn-scan-exp" onclick="toggleScanExpMenu()">⬇️ 导出结果</button>'
+      +'<div class="scan-exp-menu" id="scanExpMenu"><div class="scan-exp-item" onclick="doScanExport('json')">📄 JSON</div><div class="scan-exp-item" onclick="doScanExport('csv')">📊 CSV</div><div class="scan-exp-item" onclick="doScanExport('xlsx')">📗 Excel (.xlsx)</div></div></div>'
+      +'</div>';
     results.filter(r=>r.hits.size>0).forEach(({row,hits})=>{
       html+='<div class="row-card has-hit">'+(row._meta?'<div class="row-meta">行'+row._id+' · '+esc(row._meta)+'</div>':'<div class="row-meta">行 '+row._id+'</div>')
         +'<div class="row-text">'+buildHL(row._text,hits)+'</div><div class="hit-list">';
@@ -878,6 +890,48 @@ function runScan(){
     if(clean.length)html+='<details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;color:#6e6e73;padding:8px 0">▶ 未命中行（'+clean.length+'）</summary>'+clean.slice(0,200).map(({row})=>'<div class="no-hit-row"><span style="color:#aeaeb2;margin-right:8px">行'+row._id+'</span>'+esc(row._text.slice(0,200))+'</div>').join('')+(clean.length>200?'<div style="color:#aeaeb2;font-size:12px;padding:8px">…仅显示前200</div>':'')+'</details>';
     sr.innerHTML=html;st.textContent='✅ 完成，共 '+rows.length+' 行';document.getElementById('btnScan').disabled=false;
   },30);
+}
+
+
+// ─── Scan result export ───────────────────────────────────────────────────────
+function toggleScanExpMenu(){
+  const m=document.getElementById('scanExpMenu');
+  if(m)m.classList.toggle('open');
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.scan-exp-wrap')){
+    const m=document.getElementById('scanExpMenu');
+    if(m)m.classList.remove('open');
+  }
+});
+function doScanExport(fmt){
+  const m=document.getElementById('scanExpMenu');
+  if(m)m.classList.remove('open');
+  if(!_lastScanResults){alert('请先运行扫描');return;}
+  const {rows,results}=_lastScanResults;
+  const ts=new Date().toISOString().slice(0,16).replace('T','_').replace(':','-');
+  const fname='扫描结果_'+ts;
+  // Build flat rows: one row per hit (include clean rows too, hits='')
+  const flat=results.map(({row,hits})=>{
+    if(hits.size===0)return [{行号:row._id,原文:row._text,命中词:'',类别:'',词库类型:'',状态:'干净'}];
+    return [...hits.values()].map(en=>({行号:row._id,原文:row._text,命中词:en.word,类别:en.cat,词库类型:en.src==='敏感'?'敏感词库':'直拦词库',状态:'命中'}));
+  }).flat();
+  if(fmt==='json'){
+    dlBlob(new Blob([JSON.stringify(flat,null,2)],{type:'application/json'}),fname+'.json');
+  } else if(fmt==='csv'){
+    const hdr=['行号','原文','命中词','类别','词库类型','状态'];
+    const csvRows=[hdr.join(','),...flat.map(r=>hdr.map(k=>'"'+String(r[k]||'').replace(/"/g,'""')+'"').join(','))];
+    dlBlob(new Blob(['﻿'+csvRows.join('\n')],{type:'text/csv;charset=utf-8'}),fname+'.csv');
+  } else if(fmt==='xlsx'){
+    if(typeof XLSX==='undefined'){alert('XLSX 库未加载');return;}
+    const ws=XLSX.utils.json_to_sheet(flat);
+    // Auto col width
+    const cols=Object.keys(flat[0]||{});
+    ws['!cols']=cols.map(k=>({wch:Math.min(60,Math.max(k.length+2,...flat.map(r=>String(r[k]||'').length+2)))}));
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'扫描结果');
+    XLSX.writeFile(wb,fname+'.xlsx');
+  }
 }
 
 // ═══════════════════════════════════════════════
