@@ -365,8 +365,8 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
       <div class="fg">
         <label>归一化</label>
         <div class="scope-row">
-          <span class="scope-chip active" id="normLeet" onclick="this.classList.toggle('active')">Leet还原</span>
-          <span class="scope-chip active" id="normSep" onclick="this.classList.toggle('active')">词内分隔符</span>
+          <span class="scope-chip" id="normLeet" onclick="this.classList.toggle('active')">Leet还原</span>
+          <span class="scope-chip" id="normSep" onclick="this.classList.toggle('active')">词内分隔符</span>
         </div>
       </div>
       <button class="btn-scan" id="btnScan" onclick="runScan()">🔍 开始扫描</button>
@@ -878,7 +878,7 @@ function runScan(){
     let html='<div class="res-header"><span class="res-title">扫描结果</span>'
       +(hitRows>0?'<span class="stat-chip chip-hit">⚠️ '+hitRows+'/'+rows.length+' 行命中，共 '+hitCount+' 处</span>':'<span class="stat-chip chip-ok">✅ 全部干净</span>')
       +'<div class="scan-exp-wrap"><button class="btn-scan-exp" onclick="toggleScanExpMenu()">⬇️ 导出结果</button>'
-      +'<div class="scan-exp-menu" id="scanExpMenu"><div class="scan-exp-item" onclick="doScanExport('json')">📄 JSON</div><div class="scan-exp-item" onclick="doScanExport('csv')">📊 CSV</div><div class="scan-exp-item" onclick="doScanExport('xlsx')">📗 Excel (.xlsx)</div></div></div>'
+      +'<div class="scan-exp-menu" id="scanExpMenu"><div class="scan-exp-item" onclick="doScanExport("json")">📄 JSON</div><div class="scan-exp-item" onclick="doScanExport("csv")">📊 CSV</div><div class="scan-exp-item" onclick="doScanExport("xlsx")">📗 Excel (.xlsx)</div></div></div>'
       +'</div>';
     results.filter(r=>r.hits.size>0).forEach(({row,hits})=>{
       html+='<div class="row-card has-hit">'+(row._meta?'<div class="row-meta">行'+row._id+' · '+esc(row._meta)+'</div>':'<div class="row-meta">行 '+row._id+'</div>')
