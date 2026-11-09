@@ -318,9 +318,9 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
   <div class="exp-wrap">
     <button class="tb-btn" onclick="toggleExpMenu()">⬇️ 导出</button>
     <div class="exp-menu" id="expMenu">
+      <div class="exp-item" onclick="doExport('tsv')">📊 TSV（透视表）</div>
+      <div class="exp-item" onclick="doExport('xlsx')">📗 Excel（透视表）</div>
       <div class="exp-item" onclick="doExport('json')">📄 JSON</div>
-      <div class="exp-item" onclick="doExport('csv')">📊 CSV</div>
-      <div class="exp-item" onclick="doExport('xlsx')">📗 Excel (.xlsx)</div>
     </div>
   </div>
   <button class="theme-btn" id="themeBtn" onclick="cycleTheme()" title="切换主题">💻 跟随系统</button>
@@ -956,15 +956,33 @@ function doScanExport(fmt){
 // ═══════════════════════════════════════════════
 function toggleExpMenu(){document.getElementById('expMenu').classList.toggle('open')}
 document.addEventListener('click',e=>{if(!e.target.closest('.exp-wrap'))document.getElementById('expMenu').classList.remove('open')});
-function getMergedFlat(){
-  const e=loadEdits(),ds=delSet(e),rows=[];
+// Build pivot: one row per category, one column per language
+function buildPivotRows(){
+  const e=loadEdits(),ds=delSet(e);
+  const langOrder=[],langSet=new Set();
   for(const[sn,cats]of Object.entries(DATA)){
     for(const cat of cats){
-      for(const entry of cat.entries)for(const w of entry.words)if(!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase()))rows.push({sheet:sn,cat:cat.cat,word:w,lang:entry.lang,source:'原始',addedAt:''});
-      for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat))rows.push({sheet:sn,cat:cat.cat,word:a.word,lang:a.lang,source:'新增',addedAt:a.addedAt||''});
+      for(const entry of cat.entries)if(!langSet.has(entry.lang)){langSet.add(entry.lang);langOrder.push(entry.lang);}
+      for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat)){const l=a.lang||'新增';if(!langSet.has(l)){langSet.add(l);langOrder.push(l);}}
     }
   }
-  return rows;
+  const rows=[];
+  for(const[sn,cats]of Object.entries(DATA)){
+    for(const cat of cats){
+      const lm={};
+      for(const entry of cat.entries){
+        const ws=entry.words.filter(w=>!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase()));
+        if(!lm[entry.lang])lm[entry.lang]=new Set();
+        ws.forEach(w=>lm[entry.lang].add(w));
+      }
+      for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat)){
+        if(ds.has(sn+'|'+cat.cat+'|'+a.word.toLowerCase()))continue;
+        const l=a.lang||'新增';if(!lm[l])lm[l]=new Set();lm[l].add(a.word);
+      }
+      rows.push({sheet:sn,cat:cat.cat,lm});
+    }
+  }
+  return{langOrder,rows};
 }
 function dlBlob(blob,name){const u=URL.createObjectURL(blob),a=Object.assign(document.createElement('a'),{href:u,download:name});document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),1000)}
 function doExport(fmt){
@@ -980,19 +998,29 @@ function doExport(fmt){
       }
     }
     dlBlob(new Blob([JSON.stringify(m,null,2)],{type:'application/json'}),'违禁词库_'+today()+'.json');
-  } else if(fmt==='csv'){
-    const flat=getMergedFlat(),rows=[['词库','类别','词','语种','来源','添加日期']].concat(flat.map(r=>[r.sheet,r.cat,r.word,r.lang,r.source,r.addedAt]));
-    dlBlob(new Blob(['\uFEFF'+rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n')],{type:'text/csv;charset=utf-8'}),'违禁词库_'+today()+'.csv');
+  } else if(fmt==='tsv'){
+    const{langOrder,rows}=buildPivotRows();
+    const sep='\t';
+    const header=['词库','类型',...langOrder].join(sep);
+    const lines=[header];
+    for(const row of rows){
+      const cells=[row.sheet,row.cat,...langOrder.map(l=>row.lm[l]?[...row.lm[l]].join(','):'')];
+      lines.push(cells.join(sep));
+    }
+    dlBlob(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/tab-separated-values;charset=utf-8'}),'违禁词库_'+today()+'.tsv');
   } else {
     if(typeof XLSX==='undefined'){alert('XLSX库加载中，稍候重试');return;}
-    const e=loadEdits(),ds=delSet(e),wb2=XLSX.utils.book_new();
+    const{langOrder,rows}=buildPivotRows(),wb2=XLSX.utils.book_new();
+    // One sheet per 词库
     for(const sn of Object.keys(DATA)){
-      const rows=[['类别','词','语种','来源']],cats=DATA[sn];
-      for(const cat of cats){
-        for(const entry of cat.entries)for(const w of entry.words)if(!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase()))rows.push([cat.cat,w,entry.lang,'原始']);
-        for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat))rows.push([cat.cat,a.word,a.lang,'新增']);
+      const snRows=rows.filter(r=>r.sheet===sn);
+      const aoa=[['类型',...langOrder]];
+      for(const row of snRows){
+        aoa.push([row.cat,...langOrder.map(l=>row.lm[l]?[...row.lm[l]].join(', '):'')]);
       }
-      const ws2=XLSX.utils.aoa_to_sheet(rows);ws2['!cols']=[{wch:20},{wch:35},{wch:22},{wch:6}];
+      const ws2=XLSX.utils.aoa_to_sheet(aoa);
+      const colW=[{wch:22},...langOrder.map(()=>({wch:30}))];
+      ws2['!cols']=colW;
       XLSX.utils.book_append_sheet(wb2,ws2,sn.slice(0,31));
     }
     XLSX.writeFile(wb2,'违禁词库_'+today()+'.xlsx');
