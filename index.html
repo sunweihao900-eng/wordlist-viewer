@@ -1040,45 +1040,57 @@ function doExport(fmt){
 
   } else {
     if(typeof XLSX==='undefined'){alert('XLSX库加载中，稍候重试');return;}
-    const{langOrder,rows}=buildPivotRows(),wb2=XLSX.utils.book_new();
-    for(const sn of Object.keys(DATA)){
-      const snRows=rows.filter(r=>r.sheet===sn);
-      const header=['违规分类',...langOrder];
-      const aoa=[header];
-      for(const row of snRows){
-        aoa.push([row.cat,...langOrder.map(l=>{
-          if(!row.lm[l])return '';
-          const wds=[...row.lm[l]];
-          if(wds.length<=30) return wds.join('\n');
-          const chunks=[];
-          for(let i=0;i<wds.length;i+=10) chunks.push(wds.slice(i,i+10).join('，'));
-          return chunks.join('\n');
-        })]);
+    try{
+      const{langOrder,rows}=buildPivotRows(),wb2=XLSX.utils.book_new();
+      // 单元格词数上限，防止内容过大导致崩溃
+      const CELL_LIMIT=150;
+      for(const sn of Object.keys(DATA)){
+        const snRows=rows.filter(r=>r.sheet===sn);
+        if(!snRows.length) continue;
+        const header=['违规分类',...langOrder];
+        const aoa=[header];
+        for(const row of snRows){
+          aoa.push([row.cat,...langOrder.map(l=>{
+            if(!row.lm[l]) return '';
+            const wds=[...row.lm[l]];
+            const show=wds.length>CELL_LIMIT?wds.slice(0,CELL_LIMIT):wds;
+            const suffix=wds.length>CELL_LIMIT?'\n…共'+wds.length+'词，仅显示前'+CELL_LIMIT+'词':'';
+            // 每行15个词换行
+            const chunks=[];
+            for(let i=0;i<show.length;i+=15) chunks.push(show.slice(i,i+15).join('，'));
+            return chunks.join('\n')+suffix;
+          })]);
+        }
+        const ws2=XLSX.utils.aoa_to_sheet(aoa);
+        ws2['!freeze']={xSplit:0,ySplit:1};
+        // 列宽
+        const catMaxLen=snRows.reduce((mx,r)=>Math.max(mx,r.cat.length),4);
+        ws2['!cols']=[
+          {wch:Math.min(28,catMaxLen+2)},
+          ...langOrder.map(l=>{
+            const mx=snRows.reduce((acc,r)=>{
+              if(!r.lm[l]) return acc;
+              const s=[...r.lm[l]].slice(0,5).join('，');
+              return Math.max(acc,Math.min(s.length+2,45));
+            },l.length+2);
+            return {wch:Math.min(45,Math.max(12,mx))};
+          })
+        ];
+        // 行高（按实际换行数估算）
+        ws2['!rows']=[{hpt:20},...snRows.map(row=>{
+          const maxLineCount=langOrder.reduce((mx,l)=>{
+            if(!row.lm[l]) return mx;
+            return Math.max(mx, Math.ceil(Math.min([...row.lm[l]].length,CELL_LIMIT)/15));
+          },1);
+          return {hpt:Math.min(300,Math.max(16,maxLineCount*14))};
+        })];
+        XLSX.utils.book_append_sheet(wb2,ws2,sn.slice(0,31));
       }
-      const ws2=XLSX.utils.aoa_to_sheet(aoa);
-      ws2['!freeze']={xSplit:0,ySplit:1};
-      const catMaxLen=Math.max(...snRows.map(r=>r.cat.length),4);
-      ws2['!cols']=[
-        {wch:Math.min(28,catMaxLen+2)},
-        ...langOrder.map(l=>{
-          const maxW=Math.max(
-            l.length+2,
-            ...snRows.map(r=>{
-              if(!r.lm[l])return 0;
-              const wds=[...r.lm[l]];
-              return Math.min(wds.slice(0,10).join('，').length+1,45);
-            })
-          );
-          return {wch:Math.min(45,Math.max(12,maxW))};
-        })
-      ];
-      ws2['!rows']=[{hpt:20},...snRows.map(row=>{
-        const maxWds=Math.max(1,...langOrder.map(l=>row.lm[l]?Math.ceil([...row.lm[l]].length/10):0));
-        return {hpt:Math.min(400,Math.max(16,maxWds*15))};
-      })];
-      XLSX.utils.book_append_sheet(wb2,ws2,sn.slice(0,31));
+      XLSX.writeFile(wb2,'违禁词库_'+today()+'.xlsx');
+    }catch(err){
+      console.error('Export error:',err);
+      alert('导出出错：'+err.message);
     }
-    XLSX.writeFile(wb2,'违禁词库_'+today()+'.xlsx');
   }
 }
 
