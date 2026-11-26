@@ -932,29 +932,53 @@ function doScanExport(fmt){
   const {rows,results}=_lastScanResults;
   const ts=new Date().toISOString().slice(0,16).replace('T','_').replace(':','-');
   const fname='扫描结果_'+ts;
-  // Build flat rows: one row per hit (include clean rows too, hits='')
-  const flat=results.map(({row,hits})=>{
-    const pid2=row._pid||'';const ttl2=row._ttl||'';
-    if(hits.size===0)return [{promptId:pid2,botTitle:ttl2,行号:row._id,扫描文本:row._text.slice(0,200),命中词:'',类别:'',词库类型:'',状态:'干净'}];
-    return [...hits.values()].map(en=>({promptId:pid2,botTitle:ttl2,行号:row._id,扫描文本:row._text.slice(0,200),命中词:en.word,类别:en.cat,词库类型:en.src==='敏感'?'敏感词库':en.src==='非法'?'非法词库':'直拦词库',状态:'命中'}));
-  }).flat();
+
+  // 聚合：每条文本一行，命中词合并显示
+  const hasPid=results.some(r=>r.row._pid);
+  const grouped=results.map(({row,hits})=>{
+    const pid=row._pid||'';
+    const ttl=row._ttl||row._id||'';
+    const text=(row._text||'').slice(0,300);
+    if(hits.size===0){
+      return {'序号':row._id||'','Bot名称':ttl,'Prompt_ID':pid,
+              '扫描文本':text,'命中词':'','违规分类':'','词库来源':'','命中数':0,'状态':'✅ 干净'};
+    }
+    const hitArr=[...hits.values()];
+    return {'序号':row._id||'','Bot名称':ttl,'Prompt_ID':pid,
+            '扫描文本':text,
+            '命中词':hitArr.map(e=>e.word).join(' | '),
+            '违规分类':[...new Set(hitArr.map(e=>e.cat))].join(' | '),
+            '词库来源':[...new Set(hitArr.map(e=>e.src==='敏感'?'敏感词库':e.src==='非法'?'非法词库':'直拦词库'))].join(' | '),
+            '命中数':hits.size,
+            '状态':'🚨 命中'};
+  });
+
+  const cols=hasPid
+    ?['序号','Bot名称','Prompt_ID','扫描文本','命中词','违规分类','词库来源','命中数','状态']
+    :['序号','Bot名称','扫描文本','命中词','违规分类','词库来源','命中数','状态'];
+
   if(fmt==='json'){
-    dlBlob(new Blob([JSON.stringify(flat,null,2)],{type:'application/json'}),fname+'.json');
+    dlBlob(new Blob([JSON.stringify(grouped,null,2)],{type:'application/json'}),fname+'.json');
   } else if(fmt==='csv'){
-    const hasPid=flat.some(r=>r.promptId);const hdr=(hasPid?['promptId','botTitle']:['行号']).concat(['扫描文本','命中词','类别','词库类型','状态']);
-    const csvRows=[hdr.join(','),...flat.map(r=>hdr.map(k=>'"'+String(r[k]||'').replace(/"/g,'""')+'"').join(','))];
-    dlBlob(new Blob(['﻿'+csvRows.join('\n')],{type:'text/csv;charset=utf-8'}),fname+'.csv');
+    const lines=[cols.map(c=>'"'+c+'"').join(',')];
+    for(const r of grouped){
+      lines.push(cols.map(c=>'"'+String(r[c]!=null?r[c]:'').replace(/"/g,'""')+'"').join(','));
+    }
+    dlBlob(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),fname+'.csv');
   } else if(fmt==='xlsx'){
     if(typeof XLSX==='undefined'){alert('XLSX 库未加载');return;}
-    const ws=XLSX.utils.json_to_sheet(flat);
-    // Auto col width
-    const cols=Object.keys(flat[0]||{});
-    ws['!cols']=cols.map(k=>({wch:Math.min(60,Math.max(k.length+2,...flat.map(r=>String(r[k]||'').length+2)))}));
+    const aoa=[cols,...grouped.map(r=>cols.map(c=>r[c]!=null?r[c]:''))];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!freeze']={xSplit:0,ySplit:1};
+    const colWidths={'序号':8,'Bot名称':22,'Prompt_ID':18,'扫描文本':50,
+                     '命中词':30,'违规分类':22,'词库来源':14,'命中数':8,'状态':10};
+    ws['!cols']=cols.map(c=>({wch:colWidths[c]||18}));
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'扫描结果');
     XLSX.writeFile(wb,fname+'.xlsx');
   }
 }
+
 
 // ═══════════════════════════════════════════════
 // EXPORT
@@ -1003,34 +1027,61 @@ function doExport(fmt){
       }
     }
     dlBlob(new Blob([JSON.stringify(m,null,2)],{type:'application/json'}),'违禁词库_'+today()+'.json');
+
   } else if(fmt==='tsv'){
     const{langOrder,rows}=buildPivotRows();
-    const sep='\t';
-    const header=['词库','类型',...langOrder].join(sep);
+    const header=['词库','违规分类',...langOrder].join('\t');
     const lines=[header];
     for(const row of rows){
-      const cells=[row.sheet,row.cat,...langOrder.map(l=>row.lm[l]?[...row.lm[l]].join(','):'')];
-      lines.push(cells.join(sep));
+      const cells=[row.sheet,row.cat,...langOrder.map(l=>row.lm[l]?[...row.lm[l]].join('；'):'')];
+      lines.push(cells.join('\t'));
     }
     dlBlob(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/tab-separated-values;charset=utf-8'}),'违禁词库_'+today()+'.tsv');
+
   } else {
     if(typeof XLSX==='undefined'){alert('XLSX库加载中，稍候重试');return;}
     const{langOrder,rows}=buildPivotRows(),wb2=XLSX.utils.book_new();
-    // One sheet per 词库
     for(const sn of Object.keys(DATA)){
       const snRows=rows.filter(r=>r.sheet===sn);
-      const aoa=[['类型',...langOrder]];
+      const header=['违规分类',...langOrder];
+      const aoa=[header];
       for(const row of snRows){
-        aoa.push([row.cat,...langOrder.map(l=>row.lm[l]?[...row.lm[l]].join(', '):'')]);
+        aoa.push([row.cat,...langOrder.map(l=>{
+          if(!row.lm[l])return '';
+          const wds=[...row.lm[l]];
+          if(wds.length<=30) return wds.join('\n');
+          const chunks=[];
+          for(let i=0;i<wds.length;i+=10) chunks.push(wds.slice(i,i+10).join('，'));
+          return chunks.join('\n');
+        })]);
       }
       const ws2=XLSX.utils.aoa_to_sheet(aoa);
-      const colW=[{wch:22},...langOrder.map(()=>({wch:30}))];
-      ws2['!cols']=colW;
+      ws2['!freeze']={xSplit:0,ySplit:1};
+      const catMaxLen=Math.max(...snRows.map(r=>r.cat.length),4);
+      ws2['!cols']=[
+        {wch:Math.min(28,catMaxLen+2)},
+        ...langOrder.map(l=>{
+          const maxW=Math.max(
+            l.length+2,
+            ...snRows.map(r=>{
+              if(!r.lm[l])return 0;
+              const wds=[...r.lm[l]];
+              return Math.min(wds.slice(0,10).join('，').length+1,45);
+            })
+          );
+          return {wch:Math.min(45,Math.max(12,maxW))};
+        })
+      ];
+      ws2['!rows']=[{hpt:20},...snRows.map(row=>{
+        const maxWds=Math.max(1,...langOrder.map(l=>row.lm[l]?Math.ceil([...row.lm[l]].length/10):0));
+        return {hpt:Math.min(400,Math.max(16,maxWds*15))};
+      })];
       XLSX.utils.book_append_sheet(wb2,ws2,sn.slice(0,31));
     }
     XLSX.writeFile(wb2,'违禁词库_'+today()+'.xlsx');
   }
 }
+
 
 // ── init ──
 renderSidebar();renderMain();updateTopBadge();
