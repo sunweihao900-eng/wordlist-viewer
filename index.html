@@ -293,6 +293,26 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
 .btn-cancel:hover{background:#e8e8ed}
 .btn-ok{padding:8px 18px;background:#0071e3;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}
 .btn-ok:hover{opacity:.88}
+/* 导出选择弹窗 */
+.exp-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;align-items:center;justify-content:center}
+.exp-modal-bg.open{display:flex}
+.exp-modal{background:var(--bg-panel);border-radius:14px;width:480px;max-width:96vw;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.22);display:flex;flex-direction:column}
+.exp-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.exp-modal-title{font-size:15px;font-weight:700}
+.exp-modal-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto}
+.exp-modal-ft{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
+.exp-sec-label{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.exp-sheet-block{border:1.5px solid var(--border3);border-radius:9px;overflow:hidden;margin-bottom:4px}
+.exp-sheet-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-hover);cursor:pointer;font-size:13px;font-weight:600;user-select:none}
+.exp-sheet-hd input[type=checkbox]{cursor:pointer;width:15px;height:15px;accent-color:#0071e3}
+.exp-cats{padding:6px 10px 8px 32px;display:flex;flex-direction:column;gap:4px}
+.exp-cat-row{display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer}
+.exp-cat-row input[type=checkbox]{cursor:pointer;accent-color:#0071e3}
+.exp-fmt-row{display:flex;gap:8px;flex-wrap:wrap}
+.exp-fmt-btn{padding:7px 16px;border-radius:7px;border:1.5px solid var(--border3);background:var(--bg-panel2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.exp-fmt-btn:hover,.exp-fmt-btn.active{background:#0071e3;color:#fff;border-color:#0071e3}
+.exp-sel-all{font-size:12px;color:#0071e3;cursor:pointer;padding:0;border:none;background:none;text-decoration:underline}
+
 .mfback{font-size:12px;color:#c0392b;min-height:15px}
 </style>
 </head>
@@ -318,12 +338,7 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
   <div class="tb-sp"></div>
   <span class="tbadge" id="totalBadge"></span>
   <div class="exp-wrap">
-    <button class="tb-btn" onclick="toggleExpMenu()">⬇️ 导出</button>
-    <div class="exp-menu" id="expMenu">
-      <div class="exp-item" onclick="doExport('tsv')">📊 TSV（透视表）</div>
-      <div class="exp-item" onclick="doExport('xlsx')">📗 Excel（透视表）</div>
-      <div class="exp-item" onclick="doExport('json')">📄 JSON</div>
-    </div>
+    <button class="tb-btn" onclick="openExpModal()">⬇️ 导出</button>
   </div>
   <button class="theme-btn" id="themeBtn" onclick="cycleTheme()" title="切换主题">💻 跟随系统</button>
 </div>
@@ -444,6 +459,37 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal()">取消</button>
       <button class="btn-ok" id="modalOkBtn" onclick="submitModal()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导出选择弹窗 -->
+<div class="exp-modal-bg" id="expModalBg" onclick="closeExpModalBg(event)">
+  <div class="exp-modal">
+    <div class="exp-modal-hd">
+      <span class="exp-modal-title">⬇️ 导出词库</span>
+      <button class="act-btn act-undo" onclick="closeExpModal()" style="padding:4px 10px">✕</button>
+    </div>
+    <div class="exp-modal-body">
+      <div>
+        <div class="exp-sec-label">选择词库 / 分类
+          <button class="exp-sel-all" onclick="expSelectAll(true)">全选</button>
+          <button class="exp-sel-all" onclick="expSelectAll(false)">全不选</button>
+        </div>
+        <div id="expSheetList"></div>
+      </div>
+      <div>
+        <div class="exp-sec-label">导出格式</div>
+        <div class="exp-fmt-row">
+          <button class="exp-fmt-btn active" data-fmt="xlsx" onclick="expSetFmt(this)">📗 Excel</button>
+          <button class="exp-fmt-btn" data-fmt="tsv" onclick="expSetFmt(this)">📊 TSV</button>
+          <button class="exp-fmt-btn" data-fmt="json" onclick="expSetFmt(this)">📄 JSON</button>
+        </div>
+      </div>
+    </div>
+    <div class="exp-modal-ft">
+      <button class="btn-cancel" onclick="closeExpModal()">取消</button>
+      <button class="btn-ok" onclick="doExportSelected()">导出</button>
     </div>
   </div>
 </div>
@@ -983,14 +1029,73 @@ function doScanExport(fmt){
 // ═══════════════════════════════════════════════
 // EXPORT
 // ═══════════════════════════════════════════════
-function toggleExpMenu(){document.getElementById('expMenu').classList.toggle('open')}
-document.addEventListener('click',e=>{if(!e.target.closest('.exp-wrap'))document.getElementById('expMenu').classList.remove('open')});
-// Build pivot: one row per category, one column per language
-function buildPivotRows(){
+// ── 导出弹窗逻辑 ──────────────────────────────────────────────────────────
+let _expFmt = 'xlsx';
+function openExpModal(){
+  // 渲染词库/分类列表
+  const e=loadEdits(), ds=delSet(e);
+  const container=document.getElementById('expSheetList');
+  container.innerHTML='';
+  for(const[sn,cats]of Object.entries(DATA)){
+    const block=document.createElement('div');
+    block.className='exp-sheet-block';
+    block.innerHTML=`<div class="exp-sheet-hd">
+      <input type="checkbox" id="expSh_${sn}" checked onchange="expToggleSheet('${sn}',this.checked)">
+      <label for="expSh_${sn}" style="cursor:pointer">${sn}（${cats.length}类）</label>
+    </div>
+    <div class="exp-cats" id="expCats_${sn}">
+      ${cats.map(c=>`<label class="exp-cat-row">
+        <input type="checkbox" class="expCatCb" data-sheet="${sn}" data-cat="${c.cat}" checked>
+        <span>${c.cat}</span>
+        <span style="color:var(--text-muted);font-size:11px;margin-left:auto">${c.allWords?c.allWords.length:0}词</span>
+      </label>`).join('')}
+    </div>`;
+    container.appendChild(block);
+  }
+  // 设置当前格式按钮
+  document.querySelectorAll('.exp-fmt-btn').forEach(b=>b.classList.toggle('active',b.dataset.fmt===_expFmt));
+  document.getElementById('expModalBg').classList.add('open');
+}
+function closeExpModal(){document.getElementById('expModalBg').classList.remove('open');}
+function closeExpModalBg(e){if(e.target===document.getElementById('expModalBg'))closeExpModal();}
+function expSetFmt(btn){
+  _expFmt=btn.dataset.fmt;
+  document.querySelectorAll('.exp-fmt-btn').forEach(b=>b.classList.toggle('active',b===btn));
+}
+function expToggleSheet(sn, checked){
+  document.querySelectorAll(`.expCatCb[data-sheet="${sn}"]`).forEach(cb=>cb.checked=checked);
+}
+function expSelectAll(val){
+  document.querySelectorAll('#expSheetList input[type=checkbox]').forEach(cb=>cb.checked=val);
+}
+
+// 收集勾选的 {sheet, cat} 列表
+function expGetSelected(){
+  const sel=[];
+  document.querySelectorAll('.expCatCb:checked').forEach(cb=>{
+    sel.push({sheet:cb.dataset.sheet, cat:cb.dataset.cat});
+  });
+  return sel;
+}
+
+function doExportSelected(){
+  const sel=expGetSelected();
+  if(!sel.length){alert('请至少勾选一个分类');return;}
+  closeExpModal();
+  doExport(_expFmt, sel);
+}
+
+function toggleExpMenu(){openExpModal();}  // 兼容旧调用
+
+// ── buildPivotRows 增加 sel 过滤参数 ────────────────────────────────────────
+function buildPivotRows(selList){
   const e=loadEdits(),ds=delSet(e);
+  // selList: [{sheet,cat},...] 或 null=全部
+  const selSet=selList?new Set(selList.map(x=>x.sheet+'|'+x.cat)):null;
   const langOrder=[],langSet=new Set();
   for(const[sn,cats]of Object.entries(DATA)){
     for(const cat of cats){
+      if(selSet&&!selSet.has(sn+'|'+cat.cat)) continue;
       for(const entry of cat.entries)if(!langSet.has(entry.lang)){langSet.add(entry.lang);langOrder.push(entry.lang);}
       for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat)){const l=a.lang||'新增';if(!langSet.has(l)){langSet.add(l);langOrder.push(l);}}
     }
@@ -998,6 +1103,7 @@ function buildPivotRows(){
   const rows=[];
   for(const[sn,cats]of Object.entries(DATA)){
     for(const cat of cats){
+      if(selSet&&!selSet.has(sn+'|'+cat.cat)) continue;
       const lm={};
       for(const entry of cat.entries){
         const ws=entry.words.filter(w=>!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase()));
@@ -1013,23 +1119,27 @@ function buildPivotRows(){
   }
   return{langOrder,rows};
 }
+
 function dlBlob(blob,name){const u=URL.createObjectURL(blob),a=Object.assign(document.createElement('a'),{href:u,download:name});document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),1000)}
-function doExport(fmt){
-  document.getElementById('expMenu').classList.remove('open');
+
+function doExport(fmt, selList){
+  // selList 由弹窗传入，或 null=全部
   if(fmt==='json'){
     const e=loadEdits(),ds=delSet(e),m=JSON.parse(JSON.stringify(DATA));
+    const selSet=selList?new Set(selList.map(x=>x.sheet+'|'+x.cat)):null;
     for(const[sn,cats]of Object.entries(m)){
-      for(const cat of cats){
+      m[sn]=cats.filter(cat=>!selSet||selSet.has(sn+'|'+cat.cat)).map(cat=>{
         cat.entries=cat.entries.map(en=>({...en,words:en.words.filter(w=>!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase()))})).filter(en=>en.words.length);
         cat.allWords=cat.allWords.filter(w=>!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase()));
         const added=e.added.filter(a=>a.sheet===sn&&a.cat===cat.cat);
         if(added.length){const bl={};added.forEach(a=>{(bl[a.lang||'新增']||(bl[a.lang||'新增']=[])).push(a.word)});for(const[l,ws]of Object.entries(bl)){const ex=cat.entries.find(en=>en.lang===l);if(ex)ex.words.push(...ws);else cat.entries.push({lang:l,words:ws})}cat.allWords.push(...added.map(a=>a.word))}
-      }
+        return cat;
+      });
     }
     dlBlob(new Blob([JSON.stringify(m,null,2)],{type:'application/json'}),'违禁词库_'+today()+'.json');
 
   } else if(fmt==='tsv'){
-    const{langOrder,rows}=buildPivotRows();
+    const{langOrder,rows}=buildPivotRows(selList||null);
     const header=['词库','违规分类',...langOrder].join('\t');
     const lines=[header];
     for(const row of rows){
@@ -1039,53 +1149,31 @@ function doExport(fmt){
     dlBlob(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/tab-separated-values;charset=utf-8'}),'违禁词库_'+today()+'.tsv');
 
   } else {
+    // Excel：每个词单独一行，列=词库|分类|语种|词
     if(typeof XLSX==='undefined'){alert('XLSX库加载中，稍候重试');return;}
     try{
-      const{langOrder,rows}=buildPivotRows(),wb2=XLSX.utils.book_new();
-      // 单元格词数上限，防止内容过大导致崩溃
-      const CELL_LIMIT=150;
-      for(const sn of Object.keys(DATA)){
-        const snRows=rows.filter(r=>r.sheet===sn);
-        if(!snRows.length) continue;
-        const header=['违规分类',...langOrder];
-        const aoa=[header];
-        for(const row of snRows){
-          aoa.push([row.cat,...langOrder.map(l=>{
-            if(!row.lm[l]) return '';
-            const wds=[...row.lm[l]];
-            const show=wds.length>CELL_LIMIT?wds.slice(0,CELL_LIMIT):wds;
-            const suffix=wds.length>CELL_LIMIT?'\n…共'+wds.length+'词，仅显示前'+CELL_LIMIT+'词':'';
-            // 每行15个词换行
-            const chunks=[];
-            for(let i=0;i<show.length;i+=15) chunks.push(show.slice(i,i+15).join('，'));
-            return chunks.join('\n')+suffix;
-          })]);
+      const{langOrder,rows}=buildPivotRows(selList||null);
+      const wb2=XLSX.utils.book_new();
+      // 按词库分 sheet，每行：[分类, 语种, 词]
+      const sheetMap={};
+      for(const row of rows){
+        if(!sheetMap[row.sheet]) sheetMap[row.sheet]=[];
+        for(const lang of langOrder){
+          if(!row.lm[lang]) continue;
+          for(const w of row.lm[lang]){
+            sheetMap[row.sheet].push([row.cat, lang, w]);
+          }
         }
+      }
+      for(const[sn, dataRows] of Object.entries(sheetMap)){
+        if(!dataRows.length) continue;
+        const aoa=[['违规分类','语种','词条'], ...dataRows];
         const ws2=XLSX.utils.aoa_to_sheet(aoa);
         ws2['!freeze']={xSplit:0,ySplit:1};
-        // 列宽
-        const catMaxLen=snRows.reduce((mx,r)=>Math.max(mx,r.cat.length),4);
-        ws2['!cols']=[
-          {wch:Math.min(28,catMaxLen+2)},
-          ...langOrder.map(l=>{
-            const mx=snRows.reduce((acc,r)=>{
-              if(!r.lm[l]) return acc;
-              const s=[...r.lm[l]].slice(0,5).join('，');
-              return Math.max(acc,Math.min(s.length+2,45));
-            },l.length+2);
-            return {wch:Math.min(45,Math.max(12,mx))};
-          })
-        ];
-        // 行高（按实际换行数估算）
-        ws2['!rows']=[{hpt:20},...snRows.map(row=>{
-          const maxLineCount=langOrder.reduce((mx,l)=>{
-            if(!row.lm[l]) return mx;
-            return Math.max(mx, Math.ceil(Math.min([...row.lm[l]].length,CELL_LIMIT)/15));
-          },1);
-          return {hpt:Math.min(300,Math.max(16,maxLineCount*14))};
-        })];
+        ws2['!cols']=[{wch:22},{wch:20},{wch:36}];
         XLSX.utils.book_append_sheet(wb2,ws2,sn.slice(0,31));
       }
+      if(!wb2.SheetNames.length){alert('没有可导出的数据');return;}
       XLSX.writeFile(wb2,'违禁词库_'+today()+'.xlsx');
     }catch(err){
       console.error('Export error:',err);
