@@ -899,7 +899,7 @@ function runScan(){
     let html='<div class="res-header"><span class="res-title">扫描结果</span>'
       +(hitRows>0?'<span class="stat-chip chip-hit">⚠️ '+hitRows+'/'+rows.length+' 行命中，共 '+hitCount+' 处</span>':'<span class="stat-chip chip-ok">✅ 全部干净</span>')
       +'<div class="scan-exp-wrap"><button class="btn-scan-exp" onclick="toggleScanExpMenu()">⬇️ 导出结果</button>'
-      +'<div class="scan-exp-menu" id="scanExpMenu"><div class="scan-exp-item" onclick="doScanExport("json")">📄 JSON</div><div class="scan-exp-item" onclick="doScanExport("csv")">📊 CSV</div><div class="scan-exp-item" onclick="doScanExport("xlsx")">📗 Excel (.xlsx)</div></div></div>'
+      +'<div class="scan-exp-menu" id="scanExpMenu"><div class="scan-exp-item" onclick="doScanExport(\'json\')">📄 JSON</div><div class="scan-exp-item" onclick="doScanExport(\'csv\')">📊 CSV</div><div class="scan-exp-item" onclick="doScanExport(\'xlsx\')">📗 Excel (.xlsx)</div></div></div>'
       +'</div>';
     results.filter(r=>r.hits.size>0).forEach(({row,hits})=>{
       html+='<div class="row-card has-hit">'+(row._meta?'<div class="row-meta">'+esc(row._meta)+'</div>':'<div class="row-meta">行 '+row._id+'</div>')
