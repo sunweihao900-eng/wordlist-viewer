@@ -733,7 +733,7 @@ function renderRecords(){
     +'<tr><th>类型</th><th>词条</th><th>类别</th><th>词库</th><th>语种</th><th>日期</th><th>操作</th></tr>';
   items.forEach((item,idx)=>{
     const typeTag=item.type==='added'?'<span class="type-add">✨ 新增</span>':'<span class="type-del">🗑 删除</span>';
-    const sheetTag=item.sheet==='ILLEGAL词库'?'<span class="sheet-pill-z">直拦</span>':'<span class="sheet-pill-m">敏感</span>';
+    const sheetTag=item.sheet==='ILLEGAL词库'?'<span class="sheet-pill-z">ILLEGAL词库</span>':item.sheet==='NSFW词库'?'<span class="sheet-pill-bfg">NSFW词库</span>':'<span class="sheet-pill-m">SENSITIVE词库</span>';
     const wordCls='rt-word'+(item.type==='deleted'?' deleted':'');
     html+='<tr>'
       +'<td>'+typeTag+'</td>'
@@ -848,8 +848,8 @@ function buildIndex(scopes){
   for(const sn of scopes){
     const cats=DATA[sn]||[];
     for(const cat of cats){
-      for(const entry of cat.entries)for(const w of entry.words)if(!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase())&&!isTiny(w))entries.push({word:w,cat:cat.cat,src:sn==='ILLEGAL词库'?'直拦':sn==='NSFW词库'?'非法':'敏感'});
-      for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat))if(!isTiny(a.word))entries.push({word:a.word,cat:a.cat,src:sn==='ILLEGAL词库'?'直拦':sn==='NSFW词库'?'非法':'敏感'});
+      for(const entry of cat.entries)for(const w of entry.words)if(!ds.has(sn+'|'+cat.cat+'|'+w.toLowerCase())&&!isTiny(w))entries.push({word:w,cat:cat.cat,src:sn});
+      for(const a of e.added.filter(x=>x.sheet===sn&&x.cat===cat.cat))if(!isTiny(a.word))entries.push({word:a.word,cat:a.cat,src:sn});
     }
   }
   const seen=new Map();
@@ -953,7 +953,7 @@ function runScan(){
     results.filter(r=>r.hits.size>0).forEach(({row,hits})=>{
       html+='<div class="row-card has-hit">'+(row._meta?'<div class="row-meta">'+esc(row._meta)+'</div>':'<div class="row-meta">行 '+row._id+'</div>')
         +'<div class="row-text">'+buildHL(row._text,hits)+'</div><div class="hit-list">';
-      for(const[k,en] of hits)html+='<span class="hit-tag '+(en.src==='敏感'?'min':en.src==='非法'?'bfg':'')+'">'+esc(en.word)+' <span style="opacity:.6;font-weight:400">'+esc(en.cat)+'</span></span>';
+      for(const[k,en] of hits)html+='<span class="hit-tag '+(en.src==='SENSITIVE词库'?'min':en.src==='NSFW词库'?'bfg':'')+'">'+esc(en.word)+' <span style="opacity:.6;font-weight:400">'+esc(en.cat)+'</span></span>';
       html+='</div></div>';
     });
     const clean=results.filter(r=>r.hits.size===0);
@@ -997,7 +997,7 @@ function doScanExport(fmt){
             '扫描文本':text,
             '命中词':hitArr.map(e=>e.word).join(' | '),
             '违规分类':[...new Set(hitArr.map(e=>e.cat))].join(' | '),
-            '词库来源':[...new Set(hitArr.map(e=>e.src==='敏感'?'SENSITIVE词库':e.src==='非法'?'NSFW词库':'ILLEGAL词库'))].join(' | '),
+            '词库来源':[...new Set(hitArr.map(e=>e.src))].join(' | '),
             '命中数':hits.size,
             '状态':'🚨 命中'};
   });
