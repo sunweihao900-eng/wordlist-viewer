@@ -305,7 +305,10 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
 .exp-sheet-block{border:1.5px solid var(--border3);border-radius:9px;overflow:hidden;margin-bottom:4px}
 .exp-sheet-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-hover);cursor:pointer;font-size:13px;font-weight:600;user-select:none}
 .exp-sheet-hd input[type=checkbox]{cursor:pointer;width:15px;height:15px;accent-color:#0071e3}
-.exp-cats{padding:6px 10px 8px 32px;display:flex;flex-direction:column;gap:4px}
+.exp-sheet-arrow{margin-left:auto;font-size:11px;transition:transform .2s;display:inline-block}
+.exp-sheet-block.open .exp-sheet-arrow{transform:rotate(180deg)}
+.exp-cats{padding:6px 10px 8px 32px;display:flex;flex-direction:column;gap:4px;display:none}
+.exp-sheet-block.open .exp-cats{display:flex}
 .exp-cat-row{display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer}
 .exp-cat-row input[type=checkbox]{cursor:pointer;accent-color:#0071e3}
 .exp-fmt-row{display:flex;gap:8px;flex-wrap:wrap}
@@ -1039,9 +1042,11 @@ function openExpModal(){
   for(const[sn,cats]of Object.entries(DATA)){
     const block=document.createElement('div');
     block.className='exp-sheet-block';
-    block.innerHTML=`<div class="exp-sheet-hd">
-      <input type="checkbox" id="expSh_${sn}" checked onchange="expToggleSheet('${sn}',this.checked)">
-      <label for="expSh_${sn}" style="cursor:pointer">${sn}（${cats.length}类）</label>
+    const totalWords=cats.reduce((s,c)=>s+(c.allWords?c.allWords.length:0),0);
+    block.innerHTML=`<div class="exp-sheet-hd" onclick="expToggleBlock(this)">
+      <input type="checkbox" id="expSh_${sn}" checked onchange="expToggleSheet('${sn}',this.checked)" onclick="event.stopPropagation()">
+      <label style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('expSh_${sn}').click()">${sn}（${cats.length}类 / ${totalWords}词）</label>
+      <span class="exp-sheet-arrow">▼</span>
     </div>
     <div class="exp-cats" id="expCats_${sn}">
       ${cats.map(c=>`<label class="exp-cat-row">
@@ -1052,6 +1057,8 @@ function openExpModal(){
     </div>`;
     container.appendChild(block);
   }
+  // 默认展开所有词库block
+  container.querySelectorAll('.exp-sheet-block').forEach(b=>b.classList.add('open'));
   // 设置当前格式按钮
   document.querySelectorAll('.exp-fmt-btn').forEach(b=>b.classList.toggle('active',b.dataset.fmt===_expFmt));
   document.getElementById('expModalBg').classList.add('open');
@@ -1061,6 +1068,9 @@ function closeExpModalBg(e){if(e.target===document.getElementById('expModalBg'))
 function expSetFmt(btn){
   _expFmt=btn.dataset.fmt;
   document.querySelectorAll('.exp-fmt-btn').forEach(b=>b.classList.toggle('active',b===btn));
+}
+function expToggleBlock(hd){
+  hd.closest('.exp-sheet-block').classList.toggle('open');
 }
 function expToggleSheet(sn, checked){
   document.querySelectorAll(`.expCatCb[data-sheet="${sn}"]`).forEach(cb=>cb.checked=checked);
