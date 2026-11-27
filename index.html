@@ -330,8 +330,8 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
     <button class="ptab" id="ptab2" onclick="switchPage(2)">📋 变更记录<span class="pbadge" id="topBadge" style="display:none">0</span></button>
   </div>
   <div class="sheet-tabs" id="sheetTabs">
-    <button class="stab active" id="stab0" onclick="switchSheet(0)">ILLEGAL词库</button>
-    <button class="stab" id="stab1" onclick="switchSheet(1)">NSFW词库</button>
+    <button class="stab active" id="stab0" onclick="switchSheet(0)">NSFW词库</button>
+    <button class="stab" id="stab1" onclick="switchSheet(1)">ILLEGAL词库</button>
     <button class="stab" id="stab2" onclick="switchSheet(2)">SENSITIVE词库</button>
   </div>
   <div class="search-wrap" id="searchWrap">
@@ -378,8 +378,8 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
       <div class="fg">
         <label>扫描范围</label>
         <div class="scope-row">
-          <span class="scope-chip active" data-scope="ILLEGAL词库" onclick="toggleScope(this)">直拦</span>
-          <span class="scope-chip active" data-scope="NSFW词库" onclick="toggleScope(this)">非法</span>
+          <span class="scope-chip active" data-scope="NSFW词库" onclick="toggleScope(this)">NSFW</span>
+          <span class="scope-chip active" data-scope="ILLEGAL词库" onclick="toggleScope(this)">ILLEGAL</span>
           <span class="scope-chip active" data-scope="SENSITIVE词库" onclick="toggleScope(this)">敏感</span>
         </div>
       </div>
@@ -407,8 +407,8 @@ mark.hit:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100%+
       <span class="rf-chip active" data-rf="all" onclick="setRecFilter(this)">全部</span>
       <span class="rf-chip" data-rf="added" onclick="setRecFilter(this)">✨ 新增</span>
       <span class="rf-chip" data-rf="deleted" onclick="setRecFilter(this)">🗑 删除</span>
-      <span class="rf-chip" data-rf="ILLEGAL词库" onclick="setRecFilter(this)">直拦</span>
-      <span class="rf-chip" data-rf="NSFW词库" onclick="setRecFilter(this)">非法</span>
+      <span class="rf-chip" data-rf="NSFW词库" onclick="setRecFilter(this)">NSFW</span>
+      <span class="rf-chip" data-rf="ILLEGAL词库" onclick="setRecFilter(this)">ILLEGAL</span>
       <span class="rf-chip" data-rf="SENSITIVE词库" onclick="setRecFilter(this)">敏感</span>
       <input class="rec-search" id="recSearchBox" type="text" placeholder="搜索词/类别…" oninput="renderRecords()">
     </div>
@@ -631,7 +631,7 @@ function renderMain(){
   const e=loadEdits(),ds=delSet(e),sn=SHEET_NAMES[curSheet];
   const added=e.added.filter(a=>a.sheet===sn&&a.cat===cat.cat);
   const dc=e.deleted.filter(d=>d.sheet===sn&&d.cat===cat.cat).length;
-  const bc=curSheet===0?'bz':curSheet===1?'bfg':'bm',bt=SHEET_NAMES[curSheet];
+  const bc=curSheet===0?'bfg':curSheet===1?'bz':'bm',bt=SHEET_NAMES[curSheet];
   let html='<div class="main-hd"><span class="main-title">'+esc(cat.cat)+'</span>'
     +'<span class="main-count">'+(cat.allWords.length-dc+added.length)+' 词</span>'
     +'<span class="sh-badge '+bc+'">'+bt+'</span>';
